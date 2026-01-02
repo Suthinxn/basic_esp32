@@ -1,5 +1,5 @@
-void runSetup();
-void runLoop();
+#include <Arduino.h>
+#include "pms7003_with_bluetooth.h"
 
 void setup() {
     runSetup();
