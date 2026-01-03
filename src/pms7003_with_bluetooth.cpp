@@ -77,24 +77,26 @@ void runSetup() {
 
 // ================= PMS7003 read =================
 static bool readPMS() {
-  if (pmsSerial.available() < 32) return false;
+  while (pmsSerial.available() >= 32) {
 
-  uint8_t buffer[32];
-  pmsSerial.readBytes(buffer, 32);
+      if (pmsSerial.read() == 0x42) {
+        if (pmsSerial.peek() == 0x4D) {
+          pmsSerial.read(); // consume 0x4D
 
-  if (buffer[0] != 0x42 || buffer[1] != 0x4D) {
-    Serial.println("[PMS7003] Invalid header");
+          uint8_t buffer[30];
+          pmsSerial.readBytes(buffer, 30);
+
+          pm1  = (buffer[2] << 8) | buffer[3];
+          pm25 = (buffer[4] << 8) | buffer[5];
+          pm10 = (buffer[6] << 8) | buffer[7];
+
+          Serial.printf("[PMS7003] PM1:%d PM2.5:%d PM10:%d\n",
+                        pm1, pm25, pm10);
+          return true;
+        }
+      }
+    }
     return false;
-  }
-
-  pm1  = (buffer[4] << 8) | buffer[5];
-  pm25 = (buffer[6] << 8) | buffer[7];
-  pm10 = (buffer[8] << 8) | buffer[9];
-
-  Serial.printf("[PMS7003] PM1:%d PM2.5:%d PM10:%d\n",
-                pm1, pm25, pm10);
-
-  return true;
 }
 
 // ================= Loop =================
