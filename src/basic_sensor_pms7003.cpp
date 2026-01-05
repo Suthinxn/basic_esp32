@@ -2,57 +2,79 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-HardwareSerial mySerial(1);  // ใช้ Serial1
 
-unsigned int pm1 = 0;
-unsigned int pm2_5 = 0;
-unsigned int pm10 = 0;
+
+
+
+
+
+HardwareSerial pmsSerial(1);  // ใช้ Serial1
+
+// unsigned int pm1 = 0;
+// unsigned int pm2_5 = 0;
+// unsigned int pm10 = 0;
+
+uint16_t pm1 = 0;
+uint16_t pm2_5 = 0;
+uint16_t pm10 = 0;
+
+
 
 void runSetup() {
     Serial.begin(115200);
 
     // ตั้งค่า UART1: RX=21, TX=22
-    mySerial.begin(9600, SERIAL_8N1, 18, 19);
+    pmsSerial.begin(9600, SERIAL_8N1, 18, 19);
 
     Serial.println("ESP32 ready.");
 }
 
-void read_pm_sensor() {
+bool read_pm_sensor() {
 
-    // ต้องมีอย่างน้อย 32 bytes ถึงจะเป็นแพ็กเก็ตของ PMS7003
-    if (mySerial.available() < 32) {
-        Serial.println(mySerial.available());
-        Serial.println("return");
-        return;
+    // รอจนกว่าจะมี header
+    while (pmsSerial.available() >= 2) {
+        if (pmsSerial.read() == 0x42) {
+            if (pmsSerial.peek() == 0x4D) {
+                pmsSerial.read(); // consume 0x4D
+
+                uint8_t buffer[30];
+                if (pmsSerial.readBytes(buffer, 30) != 30) {
+                    return false;
+                }
+
+                // ตรวจ checksum
+                uint16_t checksum = 0x42 + 0x4D;
+                for (int i = 0; i < 28; i++) {
+                    checksum += buffer[i];
+                }
+
+                uint16_t recv_checksum =
+                    (buffer[28] << 8) | buffer[29];
+
+                if (checksum != recv_checksum) {
+                    Serial.println("Checksum error");
+                    return false;
+                }
+
+                // ตาม datasheet (Atmospheric Environment)
+                pm1   = (buffer[4] << 8) | buffer[5];
+                pm2_5 = (buffer[6] << 8) | buffer[7];
+                pm10  = (buffer[8] << 8) | buffer[9];
+
+                Serial.printf("PM1: %u  PM2.5: %u  PM10: %u\n",
+                              pm1, pm2_5, pm10);
+
+                return true;
+            }
+        }
     }
-
-    uint8_t buffer[32];
-
-    // อ่านข้อมูลทั้งหมด 32 bytes
-    mySerial.readBytes(buffer, 32);
-
-    // ตรวจ header 0x42 0x4D
-    if (buffer[0] != 0x42 || buffer[1] != 0x4D) {
-        Serial.println("Header not found");
-        return;
-    }
-
-    // อ่านค่าตาม datasheet
-    pm1   = buffer[4] * 256 + buffer[5];
-    pm2_5 = buffer[6] * 256 + buffer[7];
-    pm10  = buffer[8] * 256 + buffer[9];
-
-    Serial.print("PM1: ");
-    Serial.print(pm1);
-    Serial.print("  PM2.5: ");
-    Serial.print(pm2_5);
-    Serial.print("  PM10: ");
-    Serial.println(pm10);
+    return false;
 }
 
 void runLoop() {
-    Serial.println("Test");
-    read_pm_sensor();
+    if (!read_pm_sensor()) {
+        Serial.println("No valid PMS7003 data");
+    }
     delay(1000);
 }
 
